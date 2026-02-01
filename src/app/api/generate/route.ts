@@ -1,75 +1,42 @@
-import { NextRequest, userAgent } from "next/server";
-import { VOICES } from "@/lib/library";
+import { OpenAI } from 'openai';
+import { NextResponse } from 'next/server';
 
-// Limit ko barha kar 50,000 characters kar diya
-export const MAX_INPUT_LENGTH = 50000;
-export const MAX_PROMPT_LENGTH = 1000;
+// Design ko chalane ke liye ye constants zaruri hain
+export const MAX_INPUT_LENGTH = 100000; 
+export const MAX_PROMPT_LENGTH = 100000;
 
-export async function POST(req: NextRequest) {
-  const ua = userAgent(req);
-  const response_format = ua.engine?.name === "Blink" ? "wav" : "mp3";
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  const formData = await req.formData();
-  let input = formData.get("input")?.toString() || "";
-  let prompt = formData.get("prompt")?.toString() || "";
-  const voice = formData.get("voice")?.toString() || "";
-  const vibe = formData.get("vibe") || "audio";
-
-  if (!VOICES.includes(voice)) {
-    return new Response("Invalid voice", { status: 400 });
-  }
-
-  // Text ko 4000 characters ke chunks mein todna
-  const chunks = input.match(/[\s\S]{1,4000}/g) || [];
-  const audioBuffers: Uint8Array[] = [];
-
+export async function POST(req: Request) {
   try {
+    const { text, model, voice, speed } = await req.json();
+
+    if (!text) return NextResponse.json({ error: 'Text is required' }, { status: 400 });
+
+    // Text ko 4000 characters ke tukdon mein todna (Unlimited logic)
+    const chunks = text.match(/[\s\S]{1,4000}/g) || [];
+    const audioBuffers: Buffer[] = [];
+
     for (const chunk of chunks) {
-      const apiResponse = await fetch("https://api.openai.com/v1/audio/speech", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "tts-1", // tts-1 zyada stable hai long text ke liye
-          input: chunk,
-          response_format,
-          voice,
-          ...(prompt && { instructions: prompt }),
-        }),
+      const response = await openai.audio.speech.create({
+        model: model || 'tts-1',
+        voice: voice || 'alloy',
+        input: chunk,
+        speed: Number(speed) || 1.0,
       });
-
-      if (!apiResponse.ok) throw new Error("API Error");
-      
-      const arrayBuffer = await apiResponse.arrayBuffer();
-      audioBuffers.push(new Uint8Array(arrayBuffer));
+      const buffer = Buffer.from(await response.arrayBuffer());
+      audioBuffers.push(buffer);
     }
 
-    // Saare audio chunks ko ek file banana
-    const totalLength = audioBuffers.reduce((acc, curr) => acc + curr.length, 0);
-    const combinedBuffer = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const buffer of audioBuffers) {
-      combinedBuffer.set(buffer, offset);
-      offset += buffer.length;
-    }
-
-    const filename = `openai-fm-${voice}-${vibe}.${response_format}`;
+    const combinedBuffer = Buffer.concat(audioBuffers);
 
     return new Response(combinedBuffer, {
-      headers: {
-        "Content-Type": response_format === "wav" ? "audio/wav" : "audio/mpeg",
-        "Content-Disposition": `attachment; filename="${filename}"`, // Isse download trigger hoga
+      headers: { 
+        'Content-Type': 'audio/mpeg',
+        'Content-Disposition': 'attachment; filename="audio.mp3"'
       },
     });
-  } catch (err) {
-    return new Response("Error generating speech", { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
-
-// GET handler (Same logic as POST)
-export async function GET(req: NextRequest) {
-    // Aap upar wala logic GET mein bhi copy kar sakte hain agar browser URL se generate karna ho.
-    return new Response("Use POST for unlimited generation", { status: 400 });
 }
