@@ -1,42 +1,42 @@
-import { OpenAI } from 'openai';
-import { NextResponse } from 'next/server';
+import { NextRequest } from "next/server";
+import OpenAI from "openai";
 
-// Design ko chalane ke liye ye constants zaruri hain
-export const MAX_INPUT_LENGTH = 100000; 
-export const MAX_PROMPT_LENGTH = 100000;
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  console.log("--- Voice Generation Started ---");
+  
   try {
-    const { text, model, voice, speed } = await req.json();
+    const formData = await req.formData();
+    const input = formData.get("input")?.toString() || "";
+    const voice = formData.get("voice")?.toString() || "alloy";
 
-    if (!text) return NextResponse.json({ error: 'Text is required' }, { status: 400 });
+    console.log("Input received:", input.substring(0, 50) + "...");
+    console.log("Voice selected:", voice);
 
-    // Text ko 4000 characters ke tukdon mein todna (Unlimited logic)
-    const chunks = text.match(/[\s\S]{1,4000}/g) || [];
-    const audioBuffers: Buffer[] = [];
-
-    for (const chunk of chunks) {
-      const response = await openai.audio.speech.create({
-        model: model || 'tts-1',
-        voice: voice || 'alloy',
-        input: chunk,
-        speed: Number(speed) || 1.0,
-      });
-      const buffer = Buffer.from(await response.arrayBuffer());
-      audioBuffers.push(buffer);
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("ERROR: OPENAI_API_KEY is missing in Render settings!");
+      return new Response("API Key Missing", { status: 500 });
     }
 
-    const combinedBuffer = Buffer.concat(audioBuffers);
-
-    return new Response(combinedBuffer, {
-      headers: { 
-        'Content-Type': 'audio/mpeg',
-        'Content-Disposition': 'attachment; filename="audio.mp3"'
-      },
+    // OpenAI API call
+    const response = await openai.audio.speech.create({
+      model: "tts-1",
+      voice: voice as any,
+      input: input,
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    console.log("Audio generated successfully!");
+
+    return new Response(buffer, {
+      headers: { "Content-Type": "audio/mpeg" },
+    });
+
+  } catch (err: any) {
+    console.error("DETAILED ERROR:", err.message);
+    return new Response(`Error: ${err.message}`, { status: 500 });
   }
 }
