@@ -1,8 +1,8 @@
 import { OpenAI } from 'openai';
 import { NextResponse } from 'next/server';
 
-// Ye constants add karna zaruri hai taaki 'share' feature na toote
-export const MAX_INPUT_LENGTH = 50000; 
+// Ye values export karna zaruri hain share feature ke liye
+export const MAX_INPUT_LENGTH = 50000;
 export const MAX_PROMPT_LENGTH = 50000;
 
 const openai = new OpenAI({
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Text is required' }, { status: 400 });
     }
 
-    // Text ko 4000 characters ke chunks mein todna
+    // Text ko chunks mein todna
     const chunks = text.match(/[\s\S]{1,4000}/g) || [];
     const audioBuffers: Buffer[] = [];
 
@@ -33,7 +33,6 @@ export async function POST(req: Request) {
       audioBuffers.push(buffer);
     }
 
-    // Saare audio chunks ko ek saath jodna
     const combinedBuffer = Buffer.concat(audioBuffers);
 
     return new Response(combinedBuffer, {
@@ -42,8 +41,7 @@ export async function POST(req: Request) {
         'Content-Disposition': 'attachment; filename="voice.mp3"',
       },
     });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'An error occurred';
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Error' }, { status: 500 });
   }
-           }
+}
