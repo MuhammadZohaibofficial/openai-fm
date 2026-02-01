@@ -1,7 +1,8 @@
 import { OpenAI } from 'openai';
 import { NextResponse } from 'next/server';
 
-export const MAX_INPUT_LENGTH = 100000; // Limit barha di
+// Design ko chalane ke liye ye constants zaruri hain
+export const MAX_INPUT_LENGTH = 100000; 
 export const MAX_PROMPT_LENGTH = 100000;
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -9,6 +10,10 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 export async function POST(req: Request) {
   try {
     const { text, model, voice, speed } = await req.json();
+
+    if (!text) return NextResponse.json({ error: 'Text is required' }, { status: 400 });
+
+    // Text ko 4000 characters ke tukdon mein todna (Unlimited logic)
     const chunks = text.match(/[\s\S]{1,4000}/g) || [];
     const audioBuffers: Buffer[] = [];
 
@@ -19,13 +24,19 @@ export async function POST(req: Request) {
         input: chunk,
         speed: Number(speed) || 1.0,
       });
-      audioBuffers.push(Buffer.from(await response.arrayBuffer()));
+      const buffer = Buffer.from(await response.arrayBuffer());
+      audioBuffers.push(buffer);
     }
 
-    return new Response(Buffer.concat(audioBuffers), {
-      headers: { 'Content-Type': 'audio/mpeg' },
+    const combinedBuffer = Buffer.concat(audioBuffers);
+
+    return new Response(combinedBuffer, {
+      headers: { 
+        'Content-Type': 'audio/mpeg',
+        'Content-Disposition': 'attachment; filename="audio.mp3"'
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+        }
