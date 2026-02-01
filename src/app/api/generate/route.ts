@@ -1,31 +1,39 @@
 import { OpenAI } from 'openai';
 import { NextResponse } from 'next/server';
 
+// Ye constants add karna zaruri hai taaki 'share' feature na toote
+export const MAX_INPUT_LENGTH = 50000; 
+export const MAX_PROMPT_LENGTH = 50000;
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 export async function POST(req: Request) {
-  const { text, model, voice, speed } = await req.json();
-
-  // 1. Text ko 4000 characters ke chunks mein todna
-  const chunks = text.match(/[\s\S]{1,4000}/g) || [];
-  const audioBuffers = [];
-
   try {
+    const { text, model, voice, speed } = await req.json();
+
+    if (!text) {
+      return NextResponse.json({ error: 'Text is required' }, { status: 400 });
+    }
+
+    // Text ko 4000 characters ke chunks mein todna
+    const chunks = text.match(/[\s\S]{1,4000}/g) || [];
+    const audioBuffers: Buffer[] = [];
+
     for (const chunk of chunks) {
       const response = await openai.audio.speech.create({
         model: model || 'tts-1',
         voice: voice || 'alloy',
         input: chunk,
-        speed: speed || 1.0,
+        speed: Number(speed) || 1.0,
       });
       
       const buffer = Buffer.from(await response.arrayBuffer());
       audioBuffers.push(buffer);
     }
 
-    // 2. Saare audio chunks ko ek saath jodna
+    // Saare audio chunks ko ek saath jodna
     const combinedBuffer = Buffer.concat(audioBuffers);
 
     return new Response(combinedBuffer, {
@@ -34,7 +42,8 @@ export async function POST(req: Request) {
         'Content-Disposition': 'attachment; filename="voice.mp3"',
       },
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'An error occurred';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-}
+           }
